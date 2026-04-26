@@ -221,6 +221,10 @@ def _centroid(coords) -> tuple[float, float] | None:
     return lat, lng
 
 
+DIST_CENT_COLS = ["k_dist", "k_prov", "k_dep", "lat", "lng"]
+REG_CENT_COLS = ["k_dep", "lat", "lng"]
+
+
 @st.cache_data(ttl=86400)
 def build_district_centroids() -> pd.DataFrame:
     """Devuelve un DataFrame con lat/lng aproximados por distrito."""
@@ -247,7 +251,7 @@ def build_district_centroids() -> pd.DataFrame:
                 "lng": lng,
             }
         )
-    df = pd.DataFrame(rows)
+    df = pd.DataFrame(rows, columns=DIST_CENT_COLS)
     return df.drop_duplicates(subset=["k_dist", "k_prov", "k_dep"])
 
 
@@ -264,7 +268,8 @@ def build_region_centroids() -> pd.DataFrame:
         if c is None:
             continue
         rows.append({"k_dep": norm_key(dep), "lat": c[0], "lng": c[1]})
-    return pd.DataFrame(rows).drop_duplicates(subset=["k_dep"])
+    df = pd.DataFrame(rows, columns=REG_CENT_COLS)
+    return df.drop_duplicates(subset=["k_dep"])
 
 
 # ---------------------------------------------------------------------------
@@ -414,7 +419,9 @@ try:
     dist_cent = build_district_centroids()
 except Exception as e:
     st.warning(f"No se pudo cargar GeoJSON: {e}")
-    geo_regions, region_cent, dist_cent = None, pd.DataFrame(), pd.DataFrame()
+    geo_regions = None
+    region_cent = pd.DataFrame(columns=REG_CENT_COLS)
+    dist_cent = pd.DataFrame(columns=DIST_CENT_COLS)
 
 m = folium.Map(location=[-9.19, -75.02], zoom_start=5, tiles="cartodbpositron")
 
