@@ -631,14 +631,24 @@ def _style_province(feat):
     }
 
 
+def _safe_tooltip(geo: dict, fields: list[str], aliases: list[str]):
+    """Crea GeoJsonTooltip sólo si TODOS los features tienen los campos."""
+    feats = geo.get("features", []) if isinstance(geo, dict) else []
+    if not feats:
+        return None
+    for feat in feats:
+        props = (feat or {}).get("properties", {}) or {}
+        if not all(f in props for f in fields):
+            return None
+    return folium.GeoJsonTooltip(fields=fields, aliases=aliases, sticky=False)
+
+
 if geo_regions is not None:
     folium.GeoJson(
         geo_regions,
         name="Regiones Perú",
         style_function=_style_region,
-        tooltip=folium.GeoJsonTooltip(
-            fields=["NOMBDEP"], aliases=["Región:"], sticky=False
-        ),
+        tooltip=_safe_tooltip(geo_regions, ["NOMBDEP"], ["Región:"]),
     ).add_to(m)
 
 # Capa de provincias visible sólo cuando hay región o provincia seleccionada
@@ -647,10 +657,8 @@ if geo_provinces is not None and (sel_dep_key or sel_prov_key):
         geo_provinces,
         name="Provincias",
         style_function=_style_province,
-        tooltip=folium.GeoJsonTooltip(
-            fields=["NOMBPROV", "NOMBDEP"],
-            aliases=["Provincia:", "Región:"],
-            sticky=False,
+        tooltip=_safe_tooltip(
+            geo_provinces, ["NOMBPROV", "NOMBDEP"], ["Provincia:", "Región:"]
         ),
     ).add_to(m)
 
