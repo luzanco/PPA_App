@@ -960,17 +960,17 @@ with tab1:
     )
 
 with tab2:
+    _estado_label = {
+        "YA": "Ya empadronador",
+        "PENDIENTE": "Pendiente",
+        "BLOQUEADO": "Bloqueado",
+    }
+    _sit_2026 = emp_f["Estado"].map(_estado_label)
+    _sit_2026 = _sit_2026.where(emp_f["Estado"] != "OTRO", emp_f["Situacion2026"])
     tabla_e = (
         emp_f.assign(
             **{
-                "SITUACION 2026": emp_f["Estado"].replace(
-                    {
-                        "YA": "Ya empadronador",
-                        "PENDIENTE": "Pendiente",
-                        "BLOQUEADO": "Bloqueado",
-                        "OTRO": emp_f["Situacion2026"],
-                    }
-                ),
+                "SITUACION 2026": _sit_2026,
                 "Bloqueado": (emp_f["Estado"] == "BLOQUEADO").map({True: "SI", False: "NO"}),
             }
         )[
