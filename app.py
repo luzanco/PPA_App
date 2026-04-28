@@ -684,7 +684,13 @@ if sel_dep_key or sel_prov_key or sel_dist_key:
 def _style_region(feat):
     props = feat.get("properties", {}) or {}
     dep = props.get("NOMBDEP") or props.get("name") or props.get("departamento") or ""
-    is_sel = sel_dep_key and norm_key(dep) == sel_dep_key
+    # Solo se resalta el departamento si es el nivel más específico seleccionado
+    is_sel = (
+        sel_dep_key
+        and not sel_prov_key
+        and not sel_dist_key
+        and norm_key(dep) == sel_dep_key
+    )
     return {
         "fillColor": "#1e88e5" if is_sel else "#f0f0f0",
         "color": "#1565c0" if is_sel else "#888",
@@ -697,8 +703,10 @@ def _style_province(feat):
     props = feat.get("properties", {}) or {}
     prov = props.get("NOMBPROV") or props.get("provincia") or ""
     dep = props.get("NOMBDEP") or props.get("departamento") or ""
+    # Solo se resalta la provincia si es el nivel más específico seleccionado
     is_sel = (
         sel_prov_key
+        and not sel_dist_key
         and norm_key(prov) == sel_prov_key
         and (not sel_dep_key or norm_key(dep) == sel_dep_key)
     )
@@ -707,6 +715,25 @@ def _style_province(feat):
         "color": "#e65100" if is_sel else "#aaa",
         "weight": 2 if is_sel else 0.4,
         "fillOpacity": 0.45 if is_sel else 0.0,
+    }
+
+
+def _style_district(feat):
+    props = feat.get("properties", {}) or {}
+    dist = props.get("NOMBDIST") or props.get("distrito") or ""
+    prov = props.get("NOMBPROV") or props.get("provincia") or ""
+    dep = props.get("NOMBDEP") or props.get("departamento") or ""
+    is_sel = (
+        sel_dist_key
+        and norm_key(dist) == sel_dist_key
+        and (not sel_prov_key or norm_key(prov) == sel_prov_key)
+        and (not sel_dep_key or norm_key(dep) == sel_dep_key)
+    )
+    return {
+        "fillColor": "#6a1b9a" if is_sel else "#ffffff",
+        "color": "#4a148c" if is_sel else "#aaa",
+        "weight": 2 if is_sel else 0.0,
+        "fillOpacity": 0.55 if is_sel else 0.0,
     }
 
 
@@ -740,6 +767,24 @@ if geo_provinces is not None and (sel_dep_key or sel_prov_key):
             geo_provinces, ["NOMBPROV", "NOMBDEP"], ["Provincia:", "Región:"]
         ),
     ).add_to(m)
+
+# Capa de distritos visible sólo cuando hay distrito seleccionado
+if sel_dist_key:
+    try:
+        geo_districts = load_geojson(URL_GEO_DISTRICTS, str(GEO_DISTRICTS_LOCAL))
+    except Exception:
+        geo_districts = None
+    if geo_districts is not None:
+        folium.GeoJson(
+            geo_districts,
+            name="Distritos",
+            style_function=_style_district,
+            tooltip=_safe_tooltip(
+                geo_districts,
+                ["NOMBDIST", "NOMBPROV", "NOMBDEP"],
+                ["Distrito:", "Provincia:", "Región:"],
+            ),
+        ).add_to(m)
 
 # Zoom automático a la selección
 if sel_dist_key and sel_prov_key and sel_dep_key:
