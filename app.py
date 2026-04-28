@@ -551,13 +551,6 @@ cob_global = cobertura_munis(munis_f, emp[emp["Entidad"].isin(entidad_sel)])
 # ---------------------------------------------------------------------------
 st.subheader("📊 Indicadores")
 
-col = st.columns(4)
-col[0].metric("Total munis (Archivo 1)", f"{len(munis_f):,}")
-col[1].metric("Con empadronador", f"{int(cob_global['tiene_emp'].sum()):,}")
-col[2].metric("Sin empadronador", f"{int((~cob_global['tiene_emp']).sum()):,}")
-cob_pct = (cob_global["tiene_emp"].mean() * 100) if len(cob_global) else 0
-col[3].metric("% cobertura", f"{cob_pct:.1f}%")
-
 # Distritos a nivel nacional + cobertura por Centros de Empadronamiento (CE = Entidad + Sede)
 _dist_nac_keys = munis[["k_dep", "k_prov", "k_dist"]].drop_duplicates()
 _total_dist_nac = len(_dist_nac_keys)
