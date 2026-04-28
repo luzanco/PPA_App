@@ -44,7 +44,7 @@ URL_GEO_DISTRICTS = (
     "peru_distrital_simple.geojson"
 )
 
-ESTADO_YA = {"HABILITADO", "CREADO"}
+ESTADO_YA = {"HABILITADO", "ACTUALIZADO", "CREADO"}
 TODAS = "TODAS"
 TODOS = "TODOS"
 
@@ -451,10 +451,38 @@ st.markdown(
             --brand-2: #0d47a1;
             --bg-card: #ffffff;
             --bg-soft: #f5f7fb;
+            --text-strong: #0f172a;
+            --text-muted: #6b7280;
+            --border: #e5e7eb;
+            --shadow: rgba(15,23,42,.04);
+            --shadow-hover: rgba(15,23,42,.08);
             --ok: #2e7d32;
             --warn: #fb8c00;
             --bad: #c62828;
-            --muted: #6b7280;
+        }
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --brand: #4ea3f0;
+                --brand-2: #82b9f5;
+                --bg-card: #1e2530;
+                --bg-soft: #161b22;
+                --text-strong: #e6edf3;
+                --text-muted: #9aa4b2;
+                --border: #2a313c;
+                --shadow: rgba(0,0,0,.3);
+                --shadow-hover: rgba(0,0,0,.5);
+            }
+        }
+        .stApp[data-theme="dark"], [data-theme="dark"] {
+            --brand: #4ea3f0;
+            --brand-2: #82b9f5;
+            --bg-card: #1e2530;
+            --bg-soft: #161b22;
+            --text-strong: #e6edf3;
+            --text-muted: #9aa4b2;
+            --border: #2a313c;
+            --shadow: rgba(0,0,0,.3);
+            --shadow-hover: rgba(0,0,0,.5);
         }
         html, body, [class*="css"]  {
             font-family: 'Inter', 'Segoe UI', -apple-system, sans-serif;
@@ -475,24 +503,25 @@ st.markdown(
             background: var(--bg-card);
             padding: 14px 16px;
             border-radius: 14px;
-            border: 1px solid #e5e7eb;
-            box-shadow: 0 1px 3px rgba(15,23,42,.04);
+            border: 1px solid var(--border);
+            box-shadow: 0 1px 3px var(--shadow);
             transition: transform .15s ease, box-shadow .15s ease;
         }
         div[data-testid="stMetric"]:hover {
             transform: translateY(-2px);
-            box-shadow: 0 6px 18px rgba(15,23,42,.08);
+            box-shadow: 0 6px 18px var(--shadow-hover);
         }
-        div[data-testid="stMetricLabel"] { color: var(--muted); font-weight: 500; }
-        div[data-testid="stMetricValue"] { color: #0f172a; font-weight: 700; }
+        div[data-testid="stMetricLabel"] { color: var(--text-muted); font-weight: 500; }
+        div[data-testid="stMetricValue"] { color: var(--text-strong); font-weight: 700; }
         section[data-testid="stSidebar"] {
             background: var(--bg-soft);
-            border-right: 1px solid #e5e7eb;
+            border-right: 1px solid var(--border);
         }
         section[data-testid="stSidebar"] h2 { color: var(--brand-2); }
         .stTabs [data-baseweb="tab-list"] { gap: 6px; }
         .stTabs [data-baseweb="tab"] {
             background: var(--bg-soft);
+            color: var(--text-strong);
             border-radius: 10px 10px 0 0;
             padding: 8px 14px;
         }
@@ -504,7 +533,7 @@ st.markdown(
             border-radius: 10px;
             border: 1px solid var(--brand);
             color: var(--brand);
-            background: #fff;
+            background: var(--bg-card);
             font-weight: 600;
         }
         .stDownloadButton button:hover, .stButton button:hover {
@@ -526,7 +555,17 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-PLOTLY_TEMPLATE = "plotly_white"
+def _detect_theme_base() -> str:
+    try:
+        base = st.get_option("theme.base")
+        if base in ("light", "dark"):
+            return base
+    except Exception:
+        pass
+    return "light"
+
+_THEME_BASE = _detect_theme_base()
+PLOTLY_TEMPLATE = "plotly_dark" if _THEME_BASE == "dark" else "plotly_white"
 PLOTLY_COLORWAY = ["#1565c0", "#2e7d32", "#fb8c00", "#c62828", "#6a1b9a", "#00838f"]
 
 # --- Carga ---
@@ -589,7 +628,11 @@ st.subheader("📊 Indicadores")
 # Distritos a nivel nacional + cobertura por Centros de Empadronamiento (CE = Entidad + Sede)
 _dist_nac_keys = munis[["k_dep", "k_prov", "k_dist"]].drop_duplicates()
 _total_dist_nac = len(_dist_nac_keys)
-_emp_ce = emp[(emp["Entidad"] != "") & (emp["Sede"] != "")]
+_emp_ce = emp[
+    (emp["Entidad"] != "")
+    & (emp["Sede"] != "")
+    & (emp["Situacion2026"].isin(ESTADO_YA))
+]
 _dist_con_ce_keys = _emp_ce[["k_dep", "k_prov", "k_dist"]].drop_duplicates()
 _dist_con_ce = (
     _dist_nac_keys.merge(_dist_con_ce_keys, on=["k_dep", "k_prov", "k_dist"], how="inner")
@@ -663,7 +706,11 @@ if sel_dep_key or sel_prov_key or sel_dist_key:
     if sel_dist_key:
         emp_scope = emp_scope[emp_scope["k_dist"] == sel_dist_key]
 
-    emp_scope_ce = emp_scope[(emp_scope["Entidad"] != "") & (emp_scope["Sede"] != "")]
+    emp_scope_ce = emp_scope[
+        (emp_scope["Entidad"] != "")
+        & (emp_scope["Sede"] != "")
+        & (emp_scope["Situacion2026"].isin(ESTADO_YA))
+    ]
     n_ce_scope = emp_scope_ce[["Entidad", "Sede"]].drop_duplicates().shape[0]
 
     dist_scope_keys = munis_scope[["k_dep", "k_prov", "k_dist"]].drop_duplicates()
@@ -949,7 +996,9 @@ if prov_sel != TODOS:
 if dist_sel != TODOS:
     emp_ce_scope = emp_ce_scope[emp_ce_scope["k_dist"] == norm_key(dist_sel)]
 emp_ce_scope_valid = emp_ce_scope[
-    (emp_ce_scope["Entidad"] != "") & (emp_ce_scope["Sede"] != "")
+    (emp_ce_scope["Entidad"] != "")
+    & (emp_ce_scope["Sede"] != "")
+    & (emp_ce_scope["Situacion2026"].isin(ESTADO_YA))
 ]
 
 # --- Gráfica 1: Distritos con CE vs sin CE según el ámbito del filtro ---

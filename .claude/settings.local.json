@@ -22,7 +22,12 @@
       "Bash(curl -s \"https://api.github.com/search/code?q=NOMBDEP+filename:departamental+extension:geojson\" -H \"Accept: application/vnd.github+json\")",
       "Bash(python -c \"import ast; ast.parse\\(open\\('app.py', encoding='utf-8'\\).read\\(\\)\\); print\\('OK'\\)\")",
       "Bash(py -c \"import ast; ast.parse\\(open\\('app.py', encoding='utf-8'\\).read\\(\\)\\); print\\('OK'\\)\")",
-      "Bash(ls \"c:/Python\"*)"
+      "Bash(ls \"c:/Python\"*)",
+      "Bash(python *)",
+      "PowerShell(py *)",
+      "Bash(git -C \"C:/Users/luzan/OneDrive/GitHub/PPA_App\" add .)",
+      "Bash(git -C \"C:/Users/luzan/OneDrive/GitHub/PPA_App\" commit -m \"feat: update dashboard\")",
+      "Bash(git -C \"C:/Users/luzan/OneDrive/GitHub/PPA_App\" push origin main)"
     ]
   }
 }
