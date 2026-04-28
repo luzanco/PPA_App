@@ -620,10 +620,35 @@ if dist_sel != TODOS:
 # Cobertura sobre TODO el universo
 cob_global = cobertura_munis(munis_f, emp)
 
+# Etiqueta dinámica del ámbito según filtros aplicados
+def _scope_label() -> str:
+    if dist_sel != TODOS:
+        return f"{dep_sel} / {prov_sel} / {dist_sel}"
+    if prov_sel != TODOS:
+        return f"{dep_sel} / {prov_sel}"
+    if dep_sel != TODOS:
+        return dep_sel
+    return "Perú"
+
+
+def _scope_kind() -> str:
+    if dist_sel != TODOS:
+        return "Distrito"
+    if prov_sel != TODOS:
+        return "Provincia"
+    if dep_sel != TODOS:
+        return "Región"
+    return "Nacional"
+
+
+SCOPE_LABEL = _scope_label()
+SCOPE_KIND = _scope_kind()
+SCOPE_SUFFIX = "" if SCOPE_KIND == "Nacional" else f" · {SCOPE_LABEL}"
+
 # ---------------------------------------------------------------------------
 # KPIs
 # ---------------------------------------------------------------------------
-st.subheader("📊 Indicadores")
+st.subheader(f"📊 Indicadores{SCOPE_SUFFIX}")
 
 # Distritos a nivel nacional + cobertura por Centros de Empadronamiento (CE = Entidad + Sede)
 _dist_nac_keys = munis[["k_dep", "k_prov", "k_dist"]].drop_duplicates()
@@ -650,7 +675,7 @@ st.divider()
 # ---------------------------------------------------------------------------
 # Mapa
 # ---------------------------------------------------------------------------
-st.subheader("🗺️ Mapa")
+st.subheader(f"🗺️ Mapa{SCOPE_SUFFIX}")
 
 # Cargar geometrías
 try:
@@ -985,7 +1010,7 @@ st.divider()
 # ---------------------------------------------------------------------------
 # Gráficos
 # ---------------------------------------------------------------------------
-st.subheader("📈 Análisis")
+st.subheader(f"📈 Análisis{SCOPE_SUFFIX}")
 
 # Universo CE filtrado al ámbito (depto/prov/dist) para todos los gráficos
 emp_ce_scope = emp.copy()
@@ -1093,10 +1118,8 @@ if not ce_per_region.empty:
     )
     st.plotly_chart(fig2, use_container_width=True)
 
-# --- Gráfica 3: Empadronadores por Entidad (filtra por región si se eligió) ---
-g3_title = "Empadronadores por Entidad"
-if dep_sel != TODOS:
-    g3_title += f" · {dep_sel}"
+# --- Gráfica 3: Empadronadores por Entidad (filtra por ámbito si se eligió) ---
+g3_title = f"Empadronadores por Entidad{SCOPE_SUFFIX}"
 ent_emp = (
     emp_ce_scope.groupby("Entidad", as_index=False)
     .size()
@@ -1129,12 +1152,9 @@ st.divider()
 # ---------------------------------------------------------------------------
 # Datos: lista de distritos con CE
 # ---------------------------------------------------------------------------
-st.subheader("📋 Datos")
+st.subheader(f"📋 Datos{SCOPE_SUFFIX}")
 
-if dep_sel == TODOS:
-    datos_title = "Distritos con CE — Perú"
-else:
-    datos_title = f"Distritos con CE — {dep_sel}"
+datos_title = f"Distritos con CE — {SCOPE_LABEL}"
 
 _ce_unique = emp_ce_scope_valid[
     ["k_dep", "k_prov", "k_dist", "Entidad", "Sede"]
