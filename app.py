@@ -722,7 +722,7 @@ if sel_dep_key or sel_prov_key or sel_dist_key:
         )
     )
     n_dist_sin_ce_scope = max(n_dist_total_scope - n_dist_con_ce_scope, 0)
-    n_emp_scope = len(emp_scope)
+    n_emp_scope = len(emp_scope[emp_scope["Situacion2026"].isin(ESTADO_YA)])
 
     st.markdown(f"**{scope_label}**")
     c = st.columns(4)
