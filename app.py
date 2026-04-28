@@ -1136,16 +1136,11 @@ if dep_sel == TODOS:
 else:
     datos_title = f"Distritos con CE — {dep_sel}"
 
-_ce_unique = (
-    emp_ce_scope_valid[
-        ["k_dep", "k_prov", "k_dist", "Region", "Provincia", "Distrito", "Entidad", "Sede"]
-    ]
-    .drop_duplicates(subset=["k_dep", "k_prov", "k_dist", "Entidad", "Sede"])
-)
+_ce_unique = emp_ce_scope_valid[
+    ["k_dep", "k_prov", "k_dist", "Entidad", "Sede"]
+].drop_duplicates(subset=["k_dep", "k_prov", "k_dist", "Entidad", "Sede"])
 ce_count_dist = (
-    _ce_unique.groupby(
-        ["k_dep", "k_prov", "k_dist", "Region", "Provincia", "Distrito"], as_index=False
-    )
+    _ce_unique.groupby(["k_dep", "k_prov", "k_dist"], as_index=False)
     .size()
     .rename(columns={"size": "Cantidad de CE"})
 )
@@ -1154,9 +1149,14 @@ emp_count_dist = (
     .size()
     .rename(columns={"size": "Empadronadores"})
 )
+# Nombres canónicos desde munis (universo oficial) para evitar duplicar filas
+# por diferencias de mayúsculas/acentos en el archivo de empadronadores.
+_munis_names = munis[
+    ["k_dep", "k_prov", "k_dist", "Departamento", "Provincia", "Distrito"]
+].drop_duplicates(subset=["k_dep", "k_prov", "k_dist"])
 ce_por_dist = (
     ce_count_dist.merge(emp_count_dist, on=["k_dep", "k_prov", "k_dist"], how="left")
-    .rename(columns={"Region": "Departamento"})
+    .merge(_munis_names, on=["k_dep", "k_prov", "k_dist"], how="left")
     .sort_values(["Departamento", "Provincia", "Distrito"])
     .reset_index(drop=True)
 )[
