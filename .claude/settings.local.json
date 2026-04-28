@@ -8,7 +8,10 @@
       "Bash(py -m py_compile app.py)",
       "Bash(git add *)",
       "Bash(git commit *)",
-      "Bash(git push *)"
+      "Bash(git push *)",
+      "Bash(curl -sIL \"https://raw.githubusercontent.com/juaneladio/peru-geojson/master/peru_departamental.geojson\")",
+      "Bash(curl -sIL \"https://raw.githubusercontent.com/juaneladio/peru-geojson/master/peru_provincial.geojson\")",
+      "Bash(curl -sIL \"https://raw.githubusercontent.com/juaneladio/peru-geojson/master/peru_distrital.geojson\")"
     ]
   }
 }
