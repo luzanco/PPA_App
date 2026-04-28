@@ -1000,6 +1000,13 @@ emp_ce_scope_valid = emp_ce_scope[
     & (emp_ce_scope["Sede"] != "")
     & (emp_ce_scope["Situacion2026"].isin(ESTADO_YA))
 ]
+# Restringir al universo oficial de distritos (munis) para que los conteos
+# coincidan con el panel del ámbito (que hace inner join con munis).
+emp_ce_scope_valid = emp_ce_scope_valid.merge(
+    munis[["k_dep", "k_prov", "k_dist"]].drop_duplicates(),
+    on=["k_dep", "k_prov", "k_dist"],
+    how="inner",
+)
 
 # --- Gráfica 1: Distritos con CE vs sin CE según el ámbito del filtro ---
 if dep_sel == TODOS:
