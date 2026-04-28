@@ -548,9 +548,6 @@ with st.sidebar:
     )
     cond_ce_sel = st.selectbox("CONDICION CE", [TODOS] + cond_ce_opts)
 
-    sit_opts = ["Ya empadronador", "Pendiente", "Bloqueado"]
-    sit_sel = st.selectbox("SITUACION 2026", [TODOS] + sit_opts)
-
 # --- Aplicar filtros a empadronadores ---
 emp_f = emp.copy()
 emp_f = emp_f[emp_f["Entidad"].isin(entidad_sel)]
@@ -562,9 +559,6 @@ if dist_sel != TODOS:
     emp_f = emp_f[emp_f["k_dist"] == norm_key(dist_sel)]
 if cond_ce_sel != TODOS:
     emp_f = emp_f[emp_f["CondicionCE"] == cond_ce_sel]
-if sit_sel != TODOS:
-    map_sit = {"Ya empadronador": "YA", "Pendiente": "PENDIENTE", "Bloqueado": "BLOQUEADO"}
-    emp_f = emp_f[emp_f["Estado"] == map_sit[sit_sel]]
 
 # Munis filtradas (geográficamente; el Archivo 1 es el universo)
 munis_f = munis.copy()
