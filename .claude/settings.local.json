@@ -11,7 +11,18 @@
       "Bash(git push *)",
       "Bash(curl -sIL \"https://raw.githubusercontent.com/juaneladio/peru-geojson/master/peru_departamental.geojson\")",
       "Bash(curl -sIL \"https://raw.githubusercontent.com/juaneladio/peru-geojson/master/peru_provincial.geojson\")",
-      "Bash(curl -sIL \"https://raw.githubusercontent.com/juaneladio/peru-geojson/master/peru_distrital.geojson\")"
+      "Bash(curl -sIL \"https://raw.githubusercontent.com/juaneladio/peru-geojson/master/peru_distrital.geojson\")",
+      "Bash(curl -s \"https://api.github.com/repos/juaneladio/peru-geojson/contents/\")",
+      "Bash(curl -s \"https://api.github.com/search/repositories?q=peru+geojson+departamento&sort=stars\")",
+      "Bash(curl -s \"https://api.github.com/repos/joseluisq/peru-geojson-datasets/contents/\")",
+      "Bash(curl -s \"https://api.github.com/repos/annaabsi/peru-geojson-2020/contents/\")",
+      "Bash(curl -s \"https://raw.githubusercontent.com/annaabsi/peru-geojson-2020/main/distritos.json\")",
+      "Bash(curl -s -L \"https://raw.githubusercontent.com/annaabsi/peru-geojson-2020/main/distritos.json\" -o peru_distrital.geojson.new)",
+      "Bash(curl -s -L \"https://raw.githubusercontent.com/annaabsi/peru-geojson-2020/main/provincias.json\" -o peru_provincial.geojson.new)",
+      "Bash(curl -s \"https://api.github.com/search/code?q=NOMBDEP+filename:departamental+extension:geojson\" -H \"Accept: application/vnd.github+json\")",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('app.py', encoding='utf-8'\\).read\\(\\)\\); print\\('OK'\\)\")",
+      "Bash(py -c \"import ast; ast.parse\\(open\\('app.py', encoding='utf-8'\\).read\\(\\)\\); print\\('OK'\\)\")",
+      "Bash(ls \"c:/Python\"*)"
     ]
   }
 }

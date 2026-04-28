@@ -541,15 +541,6 @@ except Exception as e:
 with st.sidebar:
     st.header("Filtros")
 
-    entidades = sorted(emp["Entidad"].dropna().unique().tolist())
-    entidad_sel = st.multiselect(
-        "ENTIDAD",
-        options=[TODAS] + entidades,
-        default=[TODAS],
-    )
-    if not entidad_sel or TODAS in entidad_sel:
-        entidad_sel = entidades
-
     departamentos = sorted(munis["Departamento"].unique().tolist())
     dep_sel = st.selectbox("Región / Departamento", [TODOS] + departamentos)
 
@@ -569,22 +560,14 @@ with st.sidebar:
     distritos = sorted(_munis_dist_pool["Distrito"].unique().tolist())
     dist_sel = st.selectbox("Distrito", [TODOS] + distritos)
 
-    cond_ce_opts = sorted(
-        [v for v in emp["CondicionCE"].dropna().unique().tolist() if v]
-    )
-    cond_ce_sel = st.selectbox("CONDICION CE", [TODOS] + cond_ce_opts)
-
 # --- Aplicar filtros a empadronadores ---
 emp_f = emp.copy()
-emp_f = emp_f[emp_f["Entidad"].isin(entidad_sel)]
 if dep_sel != TODOS:
     emp_f = emp_f[emp_f["k_dep"] == norm_key(dep_sel)]
 if prov_sel != TODOS:
     emp_f = emp_f[emp_f["k_prov"] == norm_key(prov_sel)]
 if dist_sel != TODOS:
     emp_f = emp_f[emp_f["k_dist"] == norm_key(dist_sel)]
-if cond_ce_sel != TODOS:
-    emp_f = emp_f[emp_f["CondicionCE"] == cond_ce_sel]
 
 # Munis filtradas (geográficamente; el Archivo 1 es el universo)
 munis_f = munis.copy()
@@ -595,8 +578,8 @@ if prov_sel != TODOS:
 if dist_sel != TODOS:
     munis_f = munis_f[munis_f["k_dist"] == norm_key(dist_sel)]
 
-# Cobertura sobre TODO el universo (sin filtrar por entidad para los KPIs de cobertura)
-cob_global = cobertura_munis(munis_f, emp[emp["Entidad"].isin(entidad_sel)])
+# Cobertura sobre TODO el universo
+cob_global = cobertura_munis(munis_f, emp)
 
 # ---------------------------------------------------------------------------
 # KPIs
@@ -625,13 +608,6 @@ st.divider()
 # Mapa
 # ---------------------------------------------------------------------------
 st.subheader("🗺️ Mapa")
-
-# Detección modo: A si la lista de entidades incluye "MUNICIPALIDAD..."
-def is_mode_a(entidades_seleccionadas: list[str]) -> bool:
-    return any(ENTIDAD_MUNI_KEY in e for e in entidades_seleccionadas)
-
-
-mode_a = is_mode_a(entidad_sel)
 
 # Cargar geometrías
 try:
@@ -679,7 +655,7 @@ if sel_dep_key or sel_prov_key or sel_dist_key:
         scope_label = f"Región · {dep_sel}"
         munis_scope = munis[munis["k_dep"] == sel_dep_key]
 
-    emp_scope = emp[emp["Entidad"].isin(entidad_sel)]
+    emp_scope = emp.copy()
     if sel_dep_key:
         emp_scope = emp_scope[emp_scope["k_dep"] == sel_dep_key]
     if sel_prov_key:
@@ -731,10 +707,10 @@ def _style_province(feat):
         and (not sel_dep_key or norm_key(dep) == sel_dep_key)
     )
     return {
-        "fillColor": "#ffb74d" if is_sel else "#ffffff",
-        "color": "#e65100" if is_sel else "#aaa",
-        "weight": 1.5 if is_sel else 0.4,
-        "fillOpacity": 0.30 if is_sel else 0.0,
+        "fillColor": "#ff9800" if is_sel else "#ffffff",
+        "color": "#bf360c" if is_sel else "#aaa",
+        "weight": 3 if is_sel else 0.4,
+        "fillOpacity": 0.45 if is_sel else 0.0,
     }
 
 
@@ -750,10 +726,10 @@ def _style_district(feat):
         and (not sel_dep_key or norm_key(dep) == sel_dep_key)
     )
     return {
-        "fillColor": "#ba68c8" if is_sel else "#ffffff",
+        "fillColor": "#ab47bc" if is_sel else "#ffffff",
         "color": "#4a148c" if is_sel else "#aaa",
-        "weight": 1.5 if is_sel else 0.0,
-        "fillOpacity": 0.40 if is_sel else 0.0,
+        "weight": 3 if is_sel else 0.0,
+        "fillOpacity": 0.55 if is_sel else 0.0,
     }
 
 
@@ -779,12 +755,20 @@ if geo_regions is not None:
 
 # Capa de provincias visible sólo cuando hay región o provincia seleccionada
 if geo_provinces is not None and (sel_dep_key or sel_prov_key):
+    feats_p = []
+    for feat in geo_provinces.get("features", []):
+        props = feat.get("properties", {}) or {}
+        dep = props.get("NOMBDEP") or props.get("departamento") or ""
+        if sel_dep_key and norm_key(dep) != sel_dep_key:
+            continue
+        feats_p.append(feat)
+    geo_provinces_filtered = {"type": "FeatureCollection", "features": feats_p}
     folium.GeoJson(
-        geo_provinces,
+        geo_provinces_filtered,
         name="Provincias",
         style_function=_style_province,
         tooltip=_safe_tooltip(
-            geo_provinces, ["NOMBPROV", "NOMBDEP"], ["Provincia:", "Región:"]
+            geo_provinces_filtered, ["NOMBPROV", "NOMBDEP"], ["Provincia:", "Región:"]
         ),
     ).add_to(m)
 
@@ -795,12 +779,25 @@ if sel_dist_key:
     except Exception:
         geo_districts = None
     if geo_districts is not None:
+        # Filtrar a sólo los distritos del depto/provincia seleccionados
+        # para no renderizar miles de polígonos.
+        feats = []
+        for feat in geo_districts.get("features", []):
+            props = feat.get("properties", {}) or {}
+            dep = props.get("NOMBDEP") or props.get("departamento") or ""
+            prov = props.get("NOMBPROV") or props.get("provincia") or ""
+            if sel_dep_key and norm_key(dep) != sel_dep_key:
+                continue
+            if sel_prov_key and norm_key(prov) != sel_prov_key:
+                continue
+            feats.append(feat)
+        geo_districts_filtered = {"type": "FeatureCollection", "features": feats}
         folium.GeoJson(
-            geo_districts,
+            geo_districts_filtered,
             name="Distritos",
             style_function=_style_district,
             tooltip=_safe_tooltip(
-                geo_districts,
+                geo_districts_filtered,
                 ["NOMBDIST", "NOMBPROV", "NOMBDEP"],
                 ["Distrito:", "Provincia:", "Región:"],
             ),
@@ -879,34 +876,49 @@ if scope_lat is not None and scope_lng is not None:
         popup=folium.Popup(scope_popup_html, max_width=320),
         tooltip=scope_label,
     ).add_to(m)
-elif mode_a:
-    # MODO A (sin filtro geográfico): marcador por región con cobertura
+else:
+    # Sin filtro geográfico: un marcador por región con los mismos indicadores
+    emp_ce_all = emp[(emp["Entidad"] != "") & (emp["Sede"] != "")]
+    munis_per_dep = (
+        munis.groupby(["Departamento", "k_dep"], as_index=False)
+        .agg(total_dist=("k_dist", "nunique"))
+    )
+    ce_count_per_dep = (
+        emp_ce_all[["k_dep", "Entidad", "Sede"]]
+        .drop_duplicates()
+        .groupby("k_dep")
+        .size()
+        .reset_index(name="ce")
+    )
+    dist_con_ce_per_dep = (
+        emp_ce_all.groupby("k_dep")["k_dist"]
+        .nunique()
+        .reset_index(name="dist_con_ce")
+    )
+    emp_per_dep = (
+        emp.groupby("k_dep", as_index=False).size().rename(columns={"size": "emp_total"})
+    )
     cob_r = (
-        cob_global.groupby(["Departamento", "k_dep"], as_index=False)
-        .agg(
-            total_munis=("Distrito", "size"),
-            con_emp=("tiene_emp", "sum"),
-            sin_emp=("tiene_emp", lambda s: int((~s).sum())),
-        )
+        munis_per_dep.merge(ce_count_per_dep, on="k_dep", how="left")
+        .merge(dist_con_ce_per_dep, on="k_dep", how="left")
+        .merge(emp_per_dep, on="k_dep", how="left")
+        .fillna({"ce": 0, "dist_con_ce": 0, "emp_total": 0})
     )
-    emp_por_region = (
-        emp_f.groupby("k_dep", as_index=False)
-        .agg(total=("DNI", "size"))
-    )
-    cob_r = cob_r.merge(emp_por_region, on="k_dep", how="left").fillna(0)
     cob_r = cob_r.merge(region_cent, on="k_dep", how="left")
+    cob_r["dist_sin_ce"] = (cob_r["total_dist"] - cob_r["dist_con_ce"]).clip(lower=0)
 
     for _, r in cob_r.iterrows():
         if pd.isna(r.get("lat")):
             continue
-        pct = (r["con_emp"] / r["total_munis"] * 100) if r["total_munis"] else 0
+        pct = (r["dist_con_ce"] / r["total_dist"] * 100) if r["total_dist"] else 0
         color = _color_pct(pct)
         popup_html = (
-            f"<b>{r['Departamento'].upper()}</b><br>"
-            f"Munis con empadronador: {int(r['con_emp'])} de {int(r['total_munis'])}"
-            f" ({pct:.1f}%)<br>"
-            f"Munis sin empadronador: {int(r['sin_emp'])}<br>"
-            f"Total empadronadores: {int(r['total'])}"
+            f"<b>Región · {r['Departamento']}</b><br>"
+            f"Cantidad de distritos: {int(r['total_dist']):,}<br>"
+            f"Centros de empadronamiento: {int(r['ce']):,}<br>"
+            f"Distritos con CE: {int(r['dist_con_ce']):,}<br>"
+            f"Distritos sin CE: {int(r['dist_sin_ce']):,}<br>"
+            f"Empadronadores: {int(r['emp_total']):,}"
         )
         folium.CircleMarker(
             location=[r["lat"], r["lng"]],
@@ -916,42 +928,7 @@ elif mode_a:
             fill_color=color,
             fill_opacity=0.85,
             popup=folium.Popup(popup_html, max_width=320),
-            tooltip=f"{r['Departamento']}: {pct:.1f}%",
-        ).add_to(m)
-else:
-    # MODO B (sin filtro geográfico): marcador por sede/distrito
-    sede_group = (
-        emp_f.groupby(
-            ["Sede", "Entidad", "Distrito", "Region", "k_dist", "k_prov", "k_dep"],
-            as_index=False,
-            dropna=False,
-        )
-        .agg(
-            total=("DNI", "size"),
-            cond_ce=("CondicionCE", lambda s: ", ".join(sorted({x for x in s if x}))),
-        )
-    )
-    sede_group = sede_group.merge(dist_cent, on=["k_dist", "k_prov", "k_dep"], how="left")
-
-    for _, r in sede_group.iterrows():
-        if pd.isna(r.get("lat")):
-            continue
-        popup_html = (
-            f"<b>{r['Sede']}</b><br>"
-            f"Entidad: {r['Entidad']}<br>"
-            f"Distrito: {r['Distrito']} · {r['Region']}<br>"
-            f"Total empadronadores: {int(r['total'])}<br>"
-            f"CONDICION CE: {r['cond_ce'] or '-'}"
-        )
-        folium.CircleMarker(
-            location=[r["lat"], r["lng"]],
-            radius=5 + min(int(r["total"]), 12),
-            color="#1565c0",
-            fill=True,
-            fill_color="#1e88e5",
-            fill_opacity=0.85,
-            popup=folium.Popup(popup_html, max_width=320),
-            tooltip=f"{r['Sede']} ({int(r['total'])})",
+            tooltip=f"{r['Departamento']}: {int(r['ce'])} CE",
         ).add_to(m)
 
 st_folium(m, height=540, use_container_width=True, returned_objects=[])
@@ -963,121 +940,179 @@ st.divider()
 # ---------------------------------------------------------------------------
 st.subheader("📈 Análisis")
 
-g1, g2 = st.columns(2)
+# Universo CE filtrado al ámbito (depto/prov/dist) para todos los gráficos
+emp_ce_scope = emp.copy()
+if dep_sel != TODOS:
+    emp_ce_scope = emp_ce_scope[emp_ce_scope["k_dep"] == norm_key(dep_sel)]
+if prov_sel != TODOS:
+    emp_ce_scope = emp_ce_scope[emp_ce_scope["k_prov"] == norm_key(prov_sel)]
+if dist_sel != TODOS:
+    emp_ce_scope = emp_ce_scope[emp_ce_scope["k_dist"] == norm_key(dist_sel)]
+emp_ce_scope_valid = emp_ce_scope[
+    (emp_ce_scope["Entidad"] != "") & (emp_ce_scope["Sede"] != "")
+]
 
-with g1:
-    top_reg = (
-        emp_f[emp_f["Estado"] == "YA"]
-        .groupby("Region", as_index=False)
-        .size()
-        .rename(columns={"size": "Activos"})
-        .sort_values("Activos", ascending=True)
-        .tail(10)
-    )
-    if not top_reg.empty:
-        fig = px.bar(
-            top_reg,
-            x="Activos",
-            y="Region",
-            orientation="h",
-            title="Top 10 regiones por empadronadores activos (HAB+CREADO)",
-        )
-        fig.update_layout(
-            height=380,
-            margin=dict(l=10, r=10, t=40, b=10),
-            template=PLOTLY_TEMPLATE,
-            colorway=PLOTLY_COLORWAY,
-            font=dict(family="Inter, Segoe UI, sans-serif"),
-        )
-        st.plotly_chart(fig, use_container_width=True)
-    else:
-        st.info("Sin datos para Top 10 regiones con el filtro actual.")
+# --- Gráfica 1: Distritos con CE vs sin CE según el ámbito del filtro ---
+if dep_sel == TODOS:
+    g1_group_col = "Departamento"
+    g1_title = "Distritos con CE vs sin CE por Departamento"
+    g1_munis = munis.copy()
+elif prov_sel == TODOS:
+    g1_group_col = "Provincia"
+    g1_title = f"Distritos con CE vs sin CE por Provincia · {dep_sel}"
+    g1_munis = munis[munis["k_dep"] == norm_key(dep_sel)]
+else:
+    g1_group_col = "Distrito"
+    g1_title = f"Distritos con CE vs sin CE · {prov_sel}"
+    g1_munis = munis[
+        (munis["k_dep"] == norm_key(dep_sel)) & (munis["k_prov"] == norm_key(prov_sel))
+    ]
 
-with g2:
-    estado_dist = (
-        emp_f["Estado"]
-        .replace({"YA": "Ya empadronador", "PENDIENTE": "Pendiente", "BLOQUEADO": "Bloqueado"})
-        .value_counts()
-        .reset_index()
-    )
-    estado_dist.columns = ["Estado", "n"]
-    if not estado_dist.empty:
-        fig = px.pie(
-            estado_dist,
-            values="n",
-            names="Estado",
-            hole=0.5,
-            title="Distribución de estados",
-            color="Estado",
-            color_discrete_map={
-                "Ya empadronador": "#2e7d32",
-                "Pendiente": "#fb8c00",
-                "Bloqueado": "#c62828",
-            },
-        )
-        fig.update_layout(
-            height=380,
-            margin=dict(l=10, r=10, t=40, b=10),
-            template=PLOTLY_TEMPLATE,
-            colorway=PLOTLY_COLORWAY,
-            font=dict(family="Inter, Segoe UI, sans-serif"),
-        )
-        st.plotly_chart(fig, use_container_width=True)
-    else:
-        st.info("Sin datos para el donut con el filtro actual.")
+_dist_con_ce_keys_all = (
+    emp_ce_scope_valid[["k_dep", "k_prov", "k_dist"]].drop_duplicates()
+)
+_g1_dists = g1_munis[["k_dep", "k_prov", "k_dist", g1_group_col]].drop_duplicates()
+_g1_dists = _g1_dists.merge(
+    _dist_con_ce_keys_all.assign(_has=1),
+    on=["k_dep", "k_prov", "k_dist"],
+    how="left",
+)
+_g1_dists["_has"] = _g1_dists["_has"].fillna(0).astype(int)
+g1_data = (
+    _g1_dists.groupby(g1_group_col, as_index=False)
+    .agg(con=("_has", "sum"), total=("_has", "size"))
+)
+g1_data["sin"] = g1_data["total"] - g1_data["con"]
+g1_data = g1_data.sort_values("con", ascending=True)
 
-g3, g4 = st.columns(2)
-
-with g3:
-    ent_dist = (
-        emp_f.groupby("Entidad", as_index=False)
-        .size()
-        .rename(columns={"size": "n"})
-        .sort_values("n", ascending=True)
-        .tail(15)
-    )
-    if not ent_dist.empty:
-        fig = px.bar(
-            ent_dist,
-            x="n",
-            y="Entidad",
-            orientation="h",
-            title="Personas registradas por ENTIDAD (top 15)",
-        )
-        fig.update_layout(
-            height=420,
-            margin=dict(l=10, r=10, t=40, b=10),
-            template=PLOTLY_TEMPLATE,
-            colorway=PLOTLY_COLORWAY,
-            font=dict(family="Inter, Segoe UI, sans-serif"),
-        )
-        st.plotly_chart(fig, use_container_width=True)
-    else:
-        st.info("Sin datos por ENTIDAD.")
-
-with g4:
-    cob_dep = (
-        cob_global.groupby("Departamento", as_index=False)
-        .agg(con=("tiene_emp", "sum"), total=("Distrito", "size"))
-    )
-    cob_dep["sin"] = cob_dep["total"] - cob_dep["con"]
-    cob_dep = cob_dep.sort_values("total", ascending=True).tail(20)
-    fig = px.bar(
-        cob_dep,
+if not g1_data.empty:
+    fig1 = px.bar(
+        g1_data,
         x=["con", "sin"],
-        y="Departamento",
+        y=g1_group_col,
         orientation="h",
-        title="Munis con vs sin empadronador por Departamento",
-        labels={"value": "Munis", "variable": ""},
+        title=g1_title,
+        labels={"value": "Distritos", "variable": ""},
         color_discrete_map={"con": "#2e7d32", "sin": "#c62828"},
     )
-    fig.update_layout(
+    fig1.update_layout(
         barmode="stack",
-        height=420,
+        height=max(380, 22 * len(g1_data)),
         margin=dict(l=10, r=10, t=40, b=10),
         template=PLOTLY_TEMPLATE,
-        colorway=PLOTLY_COLORWAY,
         font=dict(family="Inter, Segoe UI, sans-serif"),
     )
-    st.plotly_chart(fig, use_container_width=True)
+    fig1.for_each_trace(
+        lambda t: t.update(name={"con": "Con CE", "sin": "Sin CE"}.get(t.name, t.name))
+    )
+    st.plotly_chart(fig1, use_container_width=True)
+else:
+    st.info("Sin datos para la comparación con el filtro actual.")
+
+# --- Gráfica 2: Cantidad de CE por región (siempre nacional, mayor a menor) ---
+emp_ce_country = emp[(emp["Entidad"] != "") & (emp["Sede"] != "")]
+ce_per_region = (
+    emp_ce_country[["Region", "Entidad", "Sede"]]
+    .drop_duplicates()
+    .groupby("Region")
+    .size()
+    .reset_index(name="ce")
+    .sort_values("ce", ascending=True)
+)
+if not ce_per_region.empty:
+    fig2 = px.bar(
+        ce_per_region,
+        x="ce",
+        y="Region",
+        orientation="h",
+        title="Cantidad de Centros de Empadronamiento por Región",
+        labels={"ce": "CE", "Region": ""},
+    )
+    fig2.update_traces(marker_color="#1565c0")
+    fig2.update_layout(
+        height=max(380, 22 * len(ce_per_region)),
+        margin=dict(l=10, r=10, t=40, b=10),
+        template=PLOTLY_TEMPLATE,
+        font=dict(family="Inter, Segoe UI, sans-serif"),
+    )
+    st.plotly_chart(fig2, use_container_width=True)
+
+# --- Gráfica 3: Empadronadores por Entidad (filtra por región si se eligió) ---
+g3_title = "Empadronadores por Entidad"
+if dep_sel != TODOS:
+    g3_title += f" · {dep_sel}"
+ent_emp = (
+    emp_ce_scope.groupby("Entidad", as_index=False)
+    .size()
+    .rename(columns={"size": "n"})
+    .sort_values("n", ascending=True)
+)
+ent_emp = ent_emp[ent_emp["Entidad"] != ""]
+if not ent_emp.empty:
+    fig3 = px.bar(
+        ent_emp,
+        x="n",
+        y="Entidad",
+        orientation="h",
+        title=g3_title,
+        labels={"n": "Empadronadores", "Entidad": ""},
+    )
+    fig3.update_traces(marker_color="#2e7d32")
+    fig3.update_layout(
+        height=max(380, 22 * len(ent_emp)),
+        margin=dict(l=10, r=10, t=40, b=10),
+        template=PLOTLY_TEMPLATE,
+        font=dict(family="Inter, Segoe UI, sans-serif"),
+    )
+    st.plotly_chart(fig3, use_container_width=True)
+else:
+    st.info("Sin datos por Entidad con el filtro actual.")
+
+st.divider()
+
+# ---------------------------------------------------------------------------
+# Datos: lista de distritos con CE
+# ---------------------------------------------------------------------------
+st.subheader("📋 Datos")
+
+if dep_sel == TODOS:
+    datos_title = "Distritos con CE — Perú"
+else:
+    datos_title = f"Distritos con CE — {dep_sel}"
+
+_ce_unique = (
+    emp_ce_scope_valid[
+        ["k_dep", "k_prov", "k_dist", "Region", "Provincia", "Distrito", "Entidad", "Sede"]
+    ]
+    .drop_duplicates(subset=["k_dep", "k_prov", "k_dist", "Entidad", "Sede"])
+)
+ce_count_dist = (
+    _ce_unique.groupby(
+        ["k_dep", "k_prov", "k_dist", "Region", "Provincia", "Distrito"], as_index=False
+    )
+    .size()
+    .rename(columns={"size": "Cantidad de CE"})
+)
+emp_count_dist = (
+    emp_ce_scope_valid.groupby(["k_dep", "k_prov", "k_dist"], as_index=False)
+    .size()
+    .rename(columns={"size": "Empadronadores"})
+)
+ce_por_dist = (
+    ce_count_dist.merge(emp_count_dist, on=["k_dep", "k_prov", "k_dist"], how="left")
+    .rename(columns={"Region": "Departamento"})
+    .sort_values(["Departamento", "Provincia", "Distrito"])
+    .reset_index(drop=True)
+)[
+    ["Departamento", "Provincia", "Distrito", "Cantidad de CE", "Empadronadores"]
+]
+
+st.markdown(f"**{datos_title}** · {len(ce_por_dist):,} distritos")
+st.dataframe(ce_por_dist, use_container_width=True, height=420)
+st.download_button(
+    "Descargar CSV — Distritos con CE",
+    data=ce_por_dist.to_csv(index=False).encode("utf-8-sig"),
+    file_name="distritos_con_ce.csv",
+    mime="text/csv",
+)
 
