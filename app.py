@@ -353,6 +353,26 @@ def build_province_bounds() -> dict[tuple[str, str], tuple[float, float, float, 
     return out
 
 
+@st.cache_data(ttl=86400)
+def build_district_bounds() -> dict[tuple[str, str, str], tuple[float, float, float, float]]:
+    gj = load_geojson(URL_GEO_DISTRICTS, str(GEO_DISTRICTS_LOCAL))
+    out: dict[tuple[str, str, str], tuple[float, float, float, float]] = {}
+    for feat in gj.get("features", []):
+        props = feat.get("properties", {}) or {}
+        dist = props.get("NOMBDIST") or props.get("distrito")
+        prov = props.get("NOMBPROV") or props.get("provincia")
+        dep = props.get("NOMBDEP") or props.get("departamento")
+        if not (dist and prov and dep):
+            continue
+        coords = _safe_geometry(feat)
+        if coords is None:
+            continue
+        b = _bounds_from_coords(coords)
+        if b:
+            out[(norm_key(dep), norm_key(prov), norm_key(dist))] = b
+    return out
+
+
 # ---------------------------------------------------------------------------
 # Lógica de negocio: cobertura municipal + agregaciones
 # ---------------------------------------------------------------------------
@@ -515,6 +535,14 @@ with st.sidebar:
         )
     prov_sel = st.selectbox("Provincia", [TODOS] + provincias)
 
+    _munis_dist_pool = munis.copy()
+    if dep_sel != TODOS:
+        _munis_dist_pool = _munis_dist_pool[_munis_dist_pool["Departamento"] == dep_sel]
+    if prov_sel != TODOS:
+        _munis_dist_pool = _munis_dist_pool[_munis_dist_pool["Provincia"] == prov_sel]
+    distritos = sorted(_munis_dist_pool["Distrito"].unique().tolist())
+    dist_sel = st.selectbox("Distrito", [TODOS] + distritos)
+
     cond_ce_opts = sorted(
         [v for v in emp["CondicionCE"].dropna().unique().tolist() if v]
     )
@@ -530,6 +558,8 @@ if dep_sel != TODOS:
     emp_f = emp_f[emp_f["k_dep"] == norm_key(dep_sel)]
 if prov_sel != TODOS:
     emp_f = emp_f[emp_f["k_prov"] == norm_key(prov_sel)]
+if dist_sel != TODOS:
+    emp_f = emp_f[emp_f["k_dist"] == norm_key(dist_sel)]
 if cond_ce_sel != TODOS:
     emp_f = emp_f[emp_f["CondicionCE"] == cond_ce_sel]
 if sit_sel != TODOS:
@@ -542,6 +572,8 @@ if dep_sel != TODOS:
     munis_f = munis_f[munis_f["k_dep"] == norm_key(dep_sel)]
 if prov_sel != TODOS:
     munis_f = munis_f[munis_f["k_prov"] == norm_key(prov_sel)]
+if dist_sel != TODOS:
+    munis_f = munis_f[munis_f["k_dist"] == norm_key(dist_sel)]
 
 # Cobertura sobre TODO el universo (sin filtrar por entidad para los KPIs de cobertura)
 cob_global = cobertura_munis(munis_f, emp[emp["Entidad"].isin(entidad_sel)])
@@ -589,6 +621,7 @@ try:
     dist_cent = build_district_centroids()
     region_bounds = build_region_bounds()
     province_bounds = build_province_bounds()
+    district_bounds = build_district_bounds()
 except Exception as e:
     st.warning(f"No se pudo cargar GeoJSON: {e}")
     geo_regions = None
@@ -597,12 +630,61 @@ except Exception as e:
     dist_cent = pd.DataFrame(columns=DIST_CENT_COLS)
     region_bounds = {}
     province_bounds = {}
+    district_bounds = {}
 
 m = folium.Map(location=[-9.19, -75.02], zoom_start=5, tiles="cartodbpositron")
 
-# Resaltado: la región/provincia seleccionada se pinta con color vivo
+# Resaltado: la región/provincia/distrito seleccionada se pinta con color vivo
 sel_dep_key = norm_key(dep_sel) if dep_sel != TODOS else None
 sel_prov_key = norm_key(prov_sel) if prov_sel != TODOS else None
+sel_dist_key = norm_key(dist_sel) if dist_sel != TODOS else None
+
+# --- Panel de indicadores del ámbito seleccionado ---
+if sel_dep_key or sel_prov_key or sel_dist_key:
+    if sel_dist_key:
+        scope_label = f"Distrito · {dist_sel}"
+        munis_scope = munis[
+            (munis["k_dep"] == sel_dep_key)
+            & (munis["k_prov"] == sel_prov_key)
+            & (munis["k_dist"] == sel_dist_key)
+        ]
+    elif sel_prov_key:
+        scope_label = f"Provincia · {prov_sel}"
+        munis_scope = munis[
+            (munis["k_dep"] == sel_dep_key) & (munis["k_prov"] == sel_prov_key)
+        ]
+    else:
+        scope_label = f"Región · {dep_sel}"
+        munis_scope = munis[munis["k_dep"] == sel_dep_key]
+
+    emp_scope = emp[emp["Entidad"].isin(entidad_sel)]
+    if sel_dep_key:
+        emp_scope = emp_scope[emp_scope["k_dep"] == sel_dep_key]
+    if sel_prov_key:
+        emp_scope = emp_scope[emp_scope["k_prov"] == sel_prov_key]
+    if sel_dist_key:
+        emp_scope = emp_scope[emp_scope["k_dist"] == sel_dist_key]
+
+    emp_scope_ce = emp_scope[(emp_scope["Entidad"] != "") & (emp_scope["Sede"] != "")]
+    n_ce_scope = emp_scope_ce[["Entidad", "Sede"]].drop_duplicates().shape[0]
+
+    dist_scope_keys = munis_scope[["k_dep", "k_prov", "k_dist"]].drop_duplicates()
+    n_dist_total_scope = len(dist_scope_keys)
+    dist_con_ce_keys_scope = emp_scope_ce[["k_dep", "k_prov", "k_dist"]].drop_duplicates()
+    n_dist_con_ce_scope = len(
+        dist_scope_keys.merge(
+            dist_con_ce_keys_scope, on=["k_dep", "k_prov", "k_dist"], how="inner"
+        )
+    )
+    n_dist_sin_ce_scope = max(n_dist_total_scope - n_dist_con_ce_scope, 0)
+    n_emp_scope = len(emp_scope)
+
+    st.markdown(f"**{scope_label}**")
+    c = st.columns(4)
+    c[0].metric("Centros de empadronamiento", f"{n_ce_scope:,}")
+    c[1].metric("Distritos con CE", f"{n_dist_con_ce_scope:,}")
+    c[2].metric("Distritos sin CE", f"{n_dist_sin_ce_scope:,}")
+    c[3].metric("Empadronadores en el ámbito", f"{n_emp_scope:,}")
 
 
 def _style_region(feat):
@@ -666,7 +748,11 @@ if geo_provinces is not None and (sel_dep_key or sel_prov_key):
     ).add_to(m)
 
 # Zoom automático a la selección
-if sel_prov_key and sel_dep_key:
+if sel_dist_key and sel_prov_key and sel_dep_key:
+    b = district_bounds.get((sel_dep_key, sel_prov_key, sel_dist_key))
+    if b:
+        m.fit_bounds([[b[0], b[1]], [b[2], b[3]]])
+elif sel_prov_key and sel_dep_key:
     b = province_bounds.get((sel_dep_key, sel_prov_key))
     if b:
         m.fit_bounds([[b[0], b[1]], [b[2], b[3]]])
