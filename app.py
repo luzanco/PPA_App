@@ -436,7 +436,7 @@ def cobertura_munis(munis: pd.DataFrame, emp: pd.DataFrame) -> pd.DataFrame:
 # Streamlit UI
 # ---------------------------------------------------------------------------
 st.set_page_config(
-    page_title="Dashboard Empadronadores Perú",
+    page_title="Cobertura Nacional de Empadronamiento — Perú",
     page_icon="🗺️",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -519,8 +519,8 @@ st.markdown(
 st.markdown(
     """
     <div class="app-hero">
-        <h1>🗺️ Dashboard Empadronadores Perú</h1>
-        <p>Cobertura municipal y estado de empadronadores · refresco cada 5 min</p>
+        <h1>🗺️ Cobertura Nacional de Empadronamiento — Perú</h1>
+        <p>Distritos con CE, empadronadores y cobertura territorial · actualización cada 5 min</p>
     </div>
     """,
     unsafe_allow_html=True,
