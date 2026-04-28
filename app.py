@@ -558,6 +558,22 @@ col[2].metric("Sin empadronador", f"{int((~cob_global['tiene_emp']).sum()):,}")
 cob_pct = (cob_global["tiene_emp"].mean() * 100) if len(cob_global) else 0
 col[3].metric("% cobertura", f"{cob_pct:.1f}%")
 
+# Distritos a nivel nacional + cobertura por Centros de Empadronamiento (CE = Entidad + Sede)
+_dist_nac_keys = munis[["k_dep", "k_prov", "k_dist"]].drop_duplicates()
+_total_dist_nac = len(_dist_nac_keys)
+_emp_ce = emp[(emp["Entidad"] != "") & (emp["Sede"] != "")]
+_dist_con_ce_keys = _emp_ce[["k_dep", "k_prov", "k_dist"]].drop_duplicates()
+_dist_con_ce = (
+    _dist_nac_keys.merge(_dist_con_ce_keys, on=["k_dep", "k_prov", "k_dist"], how="inner")
+)
+_n_dist_con_ce = len(_dist_con_ce)
+_n_dist_sin_ce = max(_total_dist_nac - _n_dist_con_ce, 0)
+
+col = st.columns(3)
+col[0].metric("Cantidad de distritos a nivel nacional", f"{_total_dist_nac:,}")
+col[1].metric("Distritos con al menos 1 CE", f"{_n_dist_con_ce:,}")
+col[2].metric("Distritos sin CE", f"{_n_dist_sin_ce:,}")
+
 st.divider()
 
 # ---------------------------------------------------------------------------
