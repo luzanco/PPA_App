@@ -5,7 +5,10 @@
       "Bash(curl -sSL -o peru_distrital.geojson \"https://raw.githubusercontent.com/juaneladio/peru-geojson/master/peru_distrital_simple.geojson\")",
       "Bash(curl -sSL -o peru_provincial.geojson \"https://raw.githubusercontent.com/juaneladio/peru-geojson/master/peru_provincial_simple.geojson\")",
       "Bash(python -m py_compile app.py)",
-      "Bash(py -m py_compile app.py)"
+      "Bash(py -m py_compile app.py)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git push *)"
     ]
   }
 }
