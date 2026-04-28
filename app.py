@@ -296,6 +296,32 @@ def build_district_centroids() -> pd.DataFrame:
     return df.drop_duplicates(subset=["k_dist", "k_prov", "k_dep"])
 
 
+PROV_CENT_COLS = ["k_dep", "k_prov", "lat", "lng"]
+
+
+@st.cache_data(ttl=86400)
+def build_province_centroids() -> pd.DataFrame:
+    gj = load_geojson(URL_GEO_PROVINCES, str(GEO_PROVINCES_LOCAL))
+    rows = []
+    for feat in gj.get("features", []):
+        props = feat.get("properties", {}) or {}
+        prov = props.get("NOMBPROV") or props.get("provincia")
+        dep = props.get("NOMBDEP") or props.get("departamento")
+        if not (prov and dep):
+            continue
+        coords = _safe_geometry(feat)
+        if coords is None:
+            continue
+        c = _centroid(coords)
+        if c is None:
+            continue
+        rows.append(
+            {"k_dep": norm_key(dep), "k_prov": norm_key(prov), "lat": c[0], "lng": c[1]}
+        )
+    df = pd.DataFrame(rows, columns=PROV_CENT_COLS)
+    return df.drop_duplicates(subset=["k_dep", "k_prov"])
+
+
 @st.cache_data(ttl=86400)
 def build_region_centroids() -> pd.DataFrame:
     gj = load_geojson(URL_GEO_REGIONS, str(GEO_REGIONS_LOCAL))
@@ -612,6 +638,7 @@ try:
     geo_regions = load_geojson(URL_GEO_REGIONS, str(GEO_REGIONS_LOCAL))
     geo_provinces = load_geojson(URL_GEO_PROVINCES, str(GEO_PROVINCES_LOCAL))
     region_cent = build_region_centroids()
+    prov_cent = build_province_centroids()
     dist_cent = build_district_centroids()
     region_bounds = build_region_bounds()
     province_bounds = build_province_bounds()
@@ -621,6 +648,7 @@ except Exception as e:
     geo_regions = None
     geo_provinces = None
     region_cent = pd.DataFrame(columns=REG_CENT_COLS)
+    prov_cent = pd.DataFrame(columns=PROV_CENT_COLS)
     dist_cent = pd.DataFrame(columns=DIST_CENT_COLS)
     region_bounds = {}
     province_bounds = {}
@@ -684,18 +712,12 @@ if sel_dep_key or sel_prov_key or sel_dist_key:
 def _style_region(feat):
     props = feat.get("properties", {}) or {}
     dep = props.get("NOMBDEP") or props.get("name") or props.get("departamento") or ""
-    # Solo se resalta el departamento si es el nivel más específico seleccionado
-    is_sel = (
-        sel_dep_key
-        and not sel_prov_key
-        and not sel_dist_key
-        and norm_key(dep) == sel_dep_key
-    )
+    is_sel = sel_dep_key and norm_key(dep) == sel_dep_key
     return {
-        "fillColor": "#1e88e5" if is_sel else "#f0f0f0",
+        "fillColor": "#64b5f6" if is_sel else "#f0f0f0",
         "color": "#1565c0" if is_sel else "#888",
-        "weight": 2 if is_sel else 0.6,
-        "fillOpacity": 0.35 if is_sel else 0.15,
+        "weight": 1.5 if is_sel else 0.6,
+        "fillOpacity": 0.20 if is_sel else 0.10,
     }
 
 
@@ -703,18 +725,16 @@ def _style_province(feat):
     props = feat.get("properties", {}) or {}
     prov = props.get("NOMBPROV") or props.get("provincia") or ""
     dep = props.get("NOMBDEP") or props.get("departamento") or ""
-    # Solo se resalta la provincia si es el nivel más específico seleccionado
     is_sel = (
         sel_prov_key
-        and not sel_dist_key
         and norm_key(prov) == sel_prov_key
         and (not sel_dep_key or norm_key(dep) == sel_dep_key)
     )
     return {
-        "fillColor": "#fb8c00" if is_sel else "#ffffff",
+        "fillColor": "#ffb74d" if is_sel else "#ffffff",
         "color": "#e65100" if is_sel else "#aaa",
-        "weight": 2 if is_sel else 0.4,
-        "fillOpacity": 0.45 if is_sel else 0.0,
+        "weight": 1.5 if is_sel else 0.4,
+        "fillOpacity": 0.30 if is_sel else 0.0,
     }
 
 
@@ -730,10 +750,10 @@ def _style_district(feat):
         and (not sel_dep_key or norm_key(dep) == sel_dep_key)
     )
     return {
-        "fillColor": "#6a1b9a" if is_sel else "#ffffff",
+        "fillColor": "#ba68c8" if is_sel else "#ffffff",
         "color": "#4a148c" if is_sel else "#aaa",
-        "weight": 2 if is_sel else 0.0,
-        "fillOpacity": 0.55 if is_sel else 0.0,
+        "weight": 1.5 if is_sel else 0.0,
+        "fillOpacity": 0.40 if is_sel else 0.0,
     }
 
 
@@ -810,31 +830,68 @@ def _color_pct(pct: float) -> str:
     return "#c62828"  # rojo
 
 
-if mode_a:
-    # MODO A: marcador por región
-    # cobertura por región (sobre munis_f con entidades filtradas)
+# Marcador único en el centroide del nivel más específico seleccionado
+scope_lat = scope_lng = None
+scope_color = "#1565c0"
+scope_fill = "#1e88e5"
+if sel_dist_key and sel_prov_key and sel_dep_key:
+    _row = dist_cent[
+        (dist_cent["k_dep"] == sel_dep_key)
+        & (dist_cent["k_prov"] == sel_prov_key)
+        & (dist_cent["k_dist"] == sel_dist_key)
+    ]
+    if not _row.empty:
+        scope_lat = _row.iloc[0]["lat"]
+        scope_lng = _row.iloc[0]["lng"]
+        scope_color = "#4a148c"
+        scope_fill = "#ba68c8"
+elif sel_prov_key and sel_dep_key:
+    _row = prov_cent[
+        (prov_cent["k_dep"] == sel_dep_key) & (prov_cent["k_prov"] == sel_prov_key)
+    ]
+    if not _row.empty:
+        scope_lat = _row.iloc[0]["lat"]
+        scope_lng = _row.iloc[0]["lng"]
+        scope_color = "#e65100"
+        scope_fill = "#fb8c00"
+elif sel_dep_key:
+    _row = region_cent[region_cent["k_dep"] == sel_dep_key]
+    if not _row.empty:
+        scope_lat = _row.iloc[0]["lat"]
+        scope_lng = _row.iloc[0]["lng"]
+
+if scope_lat is not None and scope_lng is not None:
+    scope_popup_html = (
+        f"<b>{scope_label}</b><br>"
+        f"Cantidad de distritos: {n_dist_total_scope:,}<br>"
+        f"Centros de empadronamiento: {n_ce_scope:,}<br>"
+        f"Distritos con CE: {n_dist_con_ce_scope:,}<br>"
+        f"Distritos sin CE: {n_dist_sin_ce_scope:,}<br>"
+        f"Empadronadores: {n_emp_scope:,}"
+    )
+    folium.CircleMarker(
+        location=[scope_lat, scope_lng],
+        radius=12,
+        color=scope_color,
+        fill=True,
+        fill_color=scope_fill,
+        fill_opacity=0.9,
+        popup=folium.Popup(scope_popup_html, max_width=320),
+        tooltip=scope_label,
+    ).add_to(m)
+elif mode_a:
+    # MODO A (sin filtro geográfico): marcador por región con cobertura
     cob_r = (
         cob_global.groupby(["Departamento", "k_dep"], as_index=False)
         .agg(
             total_munis=("Distrito", "size"),
-            con_ya=("tiene_ya", "sum"),
+            con_emp=("tiene_emp", "sum"),
             sin_emp=("tiene_emp", lambda s: int((~s).sum())),
         )
     )
-    # Sumar empadronadores por región del df ya filtrado
     emp_por_region = (
-        emp_f.assign(
-            ya=(emp_f["Estado"] == "YA").astype(int),
-            pend=(emp_f["Estado"] == "PENDIENTE").astype(int),
-            bloq=(emp_f["Estado"] == "BLOQUEADO").astype(int),
-        )
-        .groupby("k_dep", as_index=False)
-        .agg(
-            total=("DNI", "size"),
-            ya=("ya", "sum"),
-            pend=("pend", "sum"),
-            bloq=("bloq", "sum"),
-        )
+        emp_f.groupby("k_dep", as_index=False)
+        .agg(total=("DNI", "size"))
     )
     cob_r = cob_r.merge(emp_por_region, on="k_dep", how="left").fillna(0)
     cob_r = cob_r.merge(region_cent, on="k_dep", how="left")
@@ -842,16 +899,14 @@ if mode_a:
     for _, r in cob_r.iterrows():
         if pd.isna(r.get("lat")):
             continue
-        pct = (r["con_ya"] / r["total_munis"] * 100) if r["total_munis"] else 0
+        pct = (r["con_emp"] / r["total_munis"] * 100) if r["total_munis"] else 0
         color = _color_pct(pct)
         popup_html = (
-            f"<b>{r['Departamento'].upper()}</b>: {int(r['con_ya'])} CE de "
-            f"{int(r['total_munis'])} munis ({pct:.1f}%)<br>"
-            f"Munis sin ningún empadronador: {int(r['sin_emp'])}<br>"
-            f"Total empadronadores: {int(r['total'])}<br>"
-            f"Ya empadronadores (HAB+CREADO): {int(r['ya'])}<br>"
-            f"Pendientes: {int(r['pend'])}<br>"
-            f"Bloqueados: {int(r['bloq'])}"
+            f"<b>{r['Departamento'].upper()}</b><br>"
+            f"Munis con empadronador: {int(r['con_emp'])} de {int(r['total_munis'])}"
+            f" ({pct:.1f}%)<br>"
+            f"Munis sin empadronador: {int(r['sin_emp'])}<br>"
+            f"Total empadronadores: {int(r['total'])}"
         )
         folium.CircleMarker(
             location=[r["lat"], r["lng"]],
@@ -864,23 +919,15 @@ if mode_a:
             tooltip=f"{r['Departamento']}: {pct:.1f}%",
         ).add_to(m)
 else:
-    # MODO B: marcador por sede/distrito
+    # MODO B (sin filtro geográfico): marcador por sede/distrito
     sede_group = (
-        emp_f.assign(
-            ya=(emp_f["Estado"] == "YA").astype(int),
-            pend=(emp_f["Estado"] == "PENDIENTE").astype(int),
-            bloq=(emp_f["Estado"] == "BLOQUEADO").astype(int),
-        )
-        .groupby(
+        emp_f.groupby(
             ["Sede", "Entidad", "Distrito", "Region", "k_dist", "k_prov", "k_dep"],
             as_index=False,
             dropna=False,
         )
         .agg(
             total=("DNI", "size"),
-            ya=("ya", "sum"),
-            pend=("pend", "sum"),
-            bloq=("bloq", "sum"),
             cond_ce=("CondicionCE", lambda s: ", ".join(sorted({x for x in s if x}))),
         )
     )
@@ -889,24 +936,19 @@ else:
     for _, r in sede_group.iterrows():
         if pd.isna(r.get("lat")):
             continue
-        pct = (r["ya"] / r["total"] * 100) if r["total"] else 0
-        color = _color_pct(pct)
         popup_html = (
             f"<b>{r['Sede']}</b><br>"
             f"Entidad: {r['Entidad']}<br>"
             f"Distrito: {r['Distrito']} · {r['Region']}<br>"
             f"Total empadronadores: {int(r['total'])}<br>"
-            f"Ya empadronadores: {int(r['ya'])}<br>"
-            f"Pendientes: {int(r['pend'])}<br>"
-            f"Bloqueados: {int(r['bloq'])}<br>"
             f"CONDICION CE: {r['cond_ce'] or '-'}"
         )
         folium.CircleMarker(
             location=[r["lat"], r["lng"]],
             radius=5 + min(int(r["total"]), 12),
-            color=color,
+            color="#1565c0",
             fill=True,
-            fill_color=color,
+            fill_color="#1e88e5",
             fill_opacity=0.85,
             popup=folium.Popup(popup_html, max_width=320),
             tooltip=f"{r['Sede']} ({int(r['total'])})",
